@@ -1,0 +1,10 @@
+[gd_scene format=3 uid="uid://c26vwyuc4c6sm"]
+
+[ext_resource type="Script" uid="uid://yrwx786dh2wh" path="res://plugins/skill_manager/ui/SkillEditor.gd" id="1_script"]
+
+[node name="SkillEditor" type="Window" unique_id=654372578]
+oversampling_override = 1.0
+title = "SkillEditor"
+visible = false
+wrap_controls = true
+script = ExtResource("1_script")

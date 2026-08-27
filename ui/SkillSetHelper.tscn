@@ -1,0 +1,10 @@
+[gd_scene format=3 uid="uid://bwokdhumwh2kk"]
+
+[ext_resource type="Script" uid="uid://dv1cuwphku8hg" path="res://plugins/skill_manager/ui/SkillSetHelper.gd" id="1_script"]
+
+[node name="SkillSetHelper" type="Window" unique_id=706842842]
+oversampling_override = 1.0
+title = "SkillSetHelper"
+visible = false
+wrap_controls = true
+script = ExtResource("1_script")

@@ -1,0 +1,10 @@
+[gd_scene format=3 uid="uid://capqtdgynh7cd"]
+
+[ext_resource type="Script" uid="uid://bbtbkba3x1ka7" path="res://plugins/skill_manager/ui/MainWindow.gd" id="1_script"]
+
+[node name="MainWindow" type="Window" unique_id=2053939183]
+oversampling_override = 1.0
+title = "MainWindow"
+visible = false
+wrap_controls = true
+script = ExtResource("1_script")

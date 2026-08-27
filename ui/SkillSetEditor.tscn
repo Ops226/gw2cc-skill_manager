@@ -1,0 +1,9 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://plugins/skill_manager/ui/SkillSetEditor.gd" id="1_script"]
+
+[node name="SkillSetEditor" type="Window"]
+title = "SkillSetEditor"
+wrap_controls = true
+visible = false
+script = ExtResource("1_script")

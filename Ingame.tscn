@@ -1,0 +1,21 @@
+[gd_scene format=3 uid="uid://bgh8o10dfx8dl"]
+
+[ext_resource type="Theme" uid="uid://ctratp2uvuinq" path="res://assets/default_theme.tres" id="1_theme"]
+[ext_resource type="Texture2D" uid="uid://chq41oub25kg" path="res://plugins/skill_manager/assets/icon.svg" id="2_icon"]
+[ext_resource type="Script" uid="uid://beuasyhhk06es" path="res://plugins/skill_manager/Ingame.gd" id="3_script"]
+
+[node name="SkillManager" type="Button" unique_id=632898753]
+custom_minimum_size = Vector2(25, 25)
+tooltip_text = "Open the \"Skill Manager\" window."
+theme = ExtResource("1_theme")
+theme_type_variation = &"IconPluginButton"
+icon = ExtResource("2_icon")
+icon_alignment = 1
+expand_icon = true
+script = ExtResource("3_script")
+window = NodePath("MainWindow")
+wait_controlled_character_spawned = true
+
+[node name="MainWindow" parent="." unique_id=345084910 instance_placeholder="res://plugins/skill_manager/ui/MainWindow.tscn"]
+unique_name_in_owner = true
+oversampling_override = 1.0

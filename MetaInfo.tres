@@ -1,0 +1,13 @@
+[gd_resource type="Resource" script_class="ModMetaInfo" load_steps=3 format=3]
+
+[ext_resource type="Script" uid="uid://co23rwjmt1ioa" path="res://libcc/mods/ModMetaInfo.gd" id="1_meta"]
+[ext_resource type="Texture2D" path="res://plugins/skill_manager/assets/icon.svg" id="2_icon"]
+
+[resource]
+script = ExtResource("1_meta")
+product_name = "SkillManager"
+author = "gw2cc"
+version = "1.0.0"
+category = 1
+description = "Recreation of the GW2Minion SkillManager addon. Build an ordered action list of skills and gate each one behind condition groups."
+icon = ExtResource("2_icon")
