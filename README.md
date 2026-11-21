@@ -2,6 +2,11 @@
 
 A recreation of the GW2Minion **SkillManager** addon for GW2CC.
 
+> **Credits:** the original SkillManager was written by the GW2Minion team at
+> [MMOMinion](https://www.mmominion.com). This project ports their GUI,
+> condition model and `.sm` profile format to GW2CC; none of it would exist
+> without their work.
+
 Pick a profile for your profession, build an ordered list of skills, and gate each
 one behind condition groups. All the conditions in a group must pass; any group
 passing makes the skill castable, and the group that passed decides whether the
