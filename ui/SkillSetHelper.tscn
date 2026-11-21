@@ -5,6 +5,6 @@
 [node name="SkillSetHelper" type="Window" unique_id=706842842]
 oversampling_override = 1.0
 title = "SkillSetHelper"
-visible = false
+position = Vector2i(15, 100)
 wrap_controls = true
 script = ExtResource("1_script")

@@ -22,6 +22,9 @@ var slots: Dictionary[int, int] = {}
 var flips: Dictionary[int, bool] = {}
 ## Icon shown in the palette column.
 var icon: Texture2D = null
+## Skill id to the name of the elite specialization that unlocks it, for the
+## skills that need one. Shown as a note in the Skill Set Editor.
+var specializations: Dictionary[int, String] = {}
 
 
 func has_skill(skill_id: int) -> bool:
@@ -61,6 +64,15 @@ func activate(context: RefCounted) -> void:
 @warning_ignore("unused_parameter")
 func deactivate(context: RefCounted) -> bool:
 	return false
+
+
+## Adds one skill at the bar slot it would occupy. A skill already present
+## keeps its first slot.
+func add_skill(skill: AbilityDef, slot: int) -> void:
+	if not skill or slots.has(skill.id):
+		return
+	slots[skill.id] = slot
+	skills.append(skill)
 
 
 ## Populates [member skills] and [member slots] from a computed skill bar.

@@ -8,18 +8,13 @@ const Skill := preload("res://plugins/skill_manager/resources/Skill.gd")
 
 const PROFILE_DIR := "user://plugins/skill_manager/profiles"
 
-## Fight range modes, in the order of the "Fight Range" combo.
-const RANGE_DYNAMIC := 1
-const RANGE_CUSTOM := 2
-
-## The floor GW2Minion clamped every attack range to, in GW2 units. Distances
-## are stored in GW2 units regardless of the display setting; see runtime/Units.gd.
-const MIN_FIGHT_RANGE := 154.0
+## GW2Minion kept a per-profile fight range ("Dynamic" / "Custom"). gw2cc does
+## not: the fight distance and target attitude come from Settings > Combat >
+## Target Filter, so a profile carries no range of its own. Distances inside
+## conditions are still stored in GW2 units; see runtime/Units.gd.
 
 @export var version: int = 1
 @export var profession: int = 0
-@export var fightrangetype: int = RANGE_DYNAMIC
-@export var fixedfightrange: float = MIN_FIGHT_RANGE
 @export var mainmenu_code: String = ""
 @export var actionlist: Array[Resource] = []
 

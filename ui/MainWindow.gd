@@ -32,16 +32,13 @@ const CODE_EDITOR_HEIGHT := 450
 ## (sm_profile.lua:612).
 const ACTION_LIST_SCREEN_FRACTION := 0.6
 
-const FIGHT_RANGE_MODES: Array[String] = ["Dynamic", "Custom"]
 const SWAP_MODES: Array[String] = ["Automatic", "Manual"]
 
 var _plugin: Node = null
 
 var _profile_combo: OptionButton = null
 var _save_button: Button = null
-var _range_mode: OptionButton = null
-var _fight_distance_row: HBoxContainer = null
-var _fight_distance: SpinBox = null
+var _fight_distance: Label = null
 var _swap_mode: OptionButton = null
 var _latency: HSlider = null
 var _latency_value: Label = null
@@ -71,8 +68,6 @@ func _exit_tree() -> void:
 
 
 func _ready() -> void:
-	title = "Skill Manager"
-	Style.apply(self)
 	size = Vector2i(WIDTH_FOLDED, START_HEIGHT)
 	wrap_controls = true
 	close_requested.connect(hide)
@@ -121,17 +116,7 @@ func _on_runner_ready(routine: CombatManager.CombatRoutine) -> void:
 # --- construction -------------------------------------------------------------
 
 func _build() -> void:
-	var margin := MarginContainer.new()
-	margin.set_anchors_preset(Control.PRESET_FULL_RECT)
-	margin.add_theme_constant_override("margin_left", 6)
-	margin.add_theme_constant_override("margin_right", 6)
-	margin.add_theme_constant_override("margin_top", 6)
-	margin.add_theme_constant_override("margin_bottom", 6)
-	add_child(margin)
-
-	var root := VBoxContainer.new()
-	root.add_theme_constant_override("separation", 4)
-	margin.add_child(root)
+	var root: VBoxContainer = Style.chrome(self, "Skill Manager")
 
 	_build_profile_bar(root)
 	root.add_child(HSeparator.new())
@@ -178,23 +163,15 @@ func _build_profile_bar(root: VBoxContainer) -> void:
 
 
 func _build_settings(root: VBoxContainer) -> void:
-	_range_mode = OptionButton.new()
-	_fill(_range_mode, FIGHT_RANGE_MODES)
-	_range_mode.item_selected.connect(_on_range_mode)
+	# The fight distance and target attitude are gw2cc settings, shared with
+	# every other combat routine. This row only reports what is in force.
+	_fight_distance = Label.new()
+	_fight_distance.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_refresh_fight_distance()
 	root.add_child(_setting_row(
-		"Fight Range:",
-		_range_mode,
-		"'Dynamic'- Adjusts the range depending on the available spells. 'Custom'-Tries to stay at that range during fights."))
-
-	_fight_distance = SpinBox.new()
-	_fight_distance.value_changed.connect(_on_fight_distance)
-	_apply_units_to_fight_distance()
-	_fight_distance_row = _setting_row(
 		"Fight Distance:",
 		_fight_distance,
-		"While fighting, the bot tries to stay at this distance to the target.")
-	_fight_distance_row.visible = false
-	root.add_child(_fight_distance_row)
+		"Read from gw2cc Settings > Combat > Target Filter (Max Distance). Change it there; the attitude and player / NPC / gadget filters set there apply as well."))
 
 	_swap_mode = OptionButton.new()
 	_fill(_swap_mode, SWAP_MODES)
@@ -357,6 +334,7 @@ func _load_from_plugin() -> void:
 		_latency_value.text = str(routine.network_latency)
 	_no_target.button_pressed = _plugin.run_without_target
 	_distance_units.selected = Units.mode()
+	_refresh_fight_distance()
 	_loading = false
 	_on_profile_changed(_plugin.profile)
 
@@ -382,9 +360,6 @@ func _on_profile_changed(value: Resource) -> void:
 
 	_loading = true
 	if value:
-		_range_mode.selected = value.fightrangetype - 1
-		_fight_distance.value = Units.to_display(value.fixedfightrange)
-		_fight_distance_row.visible = value.fightrangetype == Profile.RANGE_CUSTOM
 		_code_editor.text = value.mainmenu_code
 	else:
 		_code_editor.text = ""
@@ -514,7 +489,9 @@ func _on_import() -> void:
 	chooser.access = FileDialog.ACCESS_FILESYSTEM
 	chooser.add_filter("*.sm", "SkillManager Profile")
 	chooser.size = Vector2i(760, 520)
-	Style.apply(chooser)
+	# A FileDialog builds its own contents, so it takes the theme directly
+	# rather than the shell.
+	chooser.theme = Style.current_theme()
 	add_child(chooser)
 	chooser.file_selected.connect(_on_import_chosen)
 	chooser.canceled.connect(chooser.queue_free)
@@ -562,27 +539,6 @@ func _on_save() -> void:
 	_refresh_save_button()
 
 
-func _on_range_mode(index: int) -> void:
-	if _loading:
-		return
-	var current: Resource = profile()
-	if not current:
-		return
-	current.fightrangetype = index + 1
-	_fight_distance_row.visible = current.fightrangetype == Profile.RANGE_CUSTOM
-	_mark_modified()
-
-
-func _on_fight_distance(shown: float) -> void:
-	if _loading:
-		return
-	var current: Resource = profile()
-	if not current:
-		return
-	current.fixedfightrange = maxf(Units.from_display(shown), Profile.MIN_FIGHT_RANGE)
-	_mark_modified()
-
-
 ## Distances are stored in GW2 units, so switching the display unit only rebuilds
 ## the fields that render one.
 func _on_distance_units(index: int) -> void:
@@ -592,22 +548,21 @@ func _on_distance_units(index: int) -> void:
 		_plugin.set_distance_units(index as Units.Mode)
 	else:
 		Units.set_mode(index as Units.Mode)
-	_apply_units_to_fight_distance()
+	_refresh_fight_distance()
 	_skill_editor.refresh_units()
 
 
-func _apply_units_to_fight_distance() -> void:
-	var was_loading := _loading
-	_loading = true
-	_fight_distance.min_value = Units.to_display(Profile.MIN_FIGHT_RANGE)
-	_fight_distance.max_value = Units.to_display(10000.0)
-	_fight_distance.step = Units.snap_step()
-	_fight_distance.custom_arrow_step = Units.arrow_step()
-	_fight_distance.suffix = Units.suffix()
-	var current: Resource = profile()
-	if current:
-		_fight_distance.value = Units.to_display(current.fixedfightrange)
-	_loading = was_loading
+## Shows the gw2cc fight distance in the chosen display units.
+## TargetFilter.max_distance reads back in GW2 units, which is what Units.format
+## takes.
+func _refresh_fight_distance() -> void:
+	if not _fight_distance:
+		return
+	if not Manager.combat:
+		_fight_distance.text = "-"
+		return
+	var filter: TargetFilter = Manager.combat.default_target_filter
+	_fight_distance.text = Units.format(filter.max_distance) + "  (set in gw2cc Settings > Combat)"
 
 
 func _on_swap_mode(index: int) -> void:
@@ -634,6 +589,9 @@ func _on_code_changed() -> void:
 		return
 	var current: Resource = profile()
 	if not current:
+		return
+	# text_changed also arrives, deferred, after the profile load wrote the text.
+	if _code_editor.text == current.mainmenu_code:
 		return
 	current.mainmenu_code = _code_editor.text
 	_mark_modified()

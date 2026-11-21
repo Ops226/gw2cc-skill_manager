@@ -22,8 +22,6 @@ var _output: TextEdit = null
 
 
 func _ready() -> void:
-	title = "Skill Set Helper"
-	Style.apply(self)
 	size = WINDOW_SIZE
 	wrap_controls = false
 	Style.fit_to_contents(self, WINDOW_SIZE)
@@ -36,16 +34,7 @@ func _ready() -> void:
 
 
 func _build() -> void:
-	var margin := MarginContainer.new()
-	margin.set_anchors_preset(Control.PRESET_FULL_RECT)
-	margin.add_theme_constant_override("margin_left", 6)
-	margin.add_theme_constant_override("margin_right", 6)
-	margin.add_theme_constant_override("margin_top", 6)
-	margin.add_theme_constant_override("margin_bottom", 6)
-	add_child(margin)
-
-	var root := VBoxContainer.new()
-	margin.add_child(root)
+	var root: VBoxContainer = Style.chrome(self, "Skill Set Helper")
 
 	_group = OptionButton.new()
 	for name: String in GROUPS:

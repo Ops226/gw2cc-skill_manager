@@ -32,6 +32,12 @@ const ADD_GROUP_SIZE := Style.ICON_LARGE
 const CODE_EDITOR_MIN_HEIGHT := 300
 const PICKER_SIZE := Vector2i(380, 170)
 
+## How often the live readings (CanCast, cooldowns, ammo, set state) repaint.
+## The runner evaluates every 50 ms; repainting the grid that often made the
+## whole client stutter while this window was up, and nobody reads a cooldown
+## at 20 Hz.
+const LIVE_REFRESH_MS := 250
+
 const CONTEXT_REFERENCE := """Additional GDScript, deciding whether this skill may be cast. Must return true or false.
 
 Available on `skill`: id, activationtime, instantcast, requireslos, setsattackrange,
@@ -41,6 +47,8 @@ Available on `context`: player, attack_target, heal_target, skillbar, actionlist
 friends_nearby, enemies_nearby, weaponset, transformid, lasttransformid,
 canswapweaponset, swimming, endurance, power, power2, mainhand, mainhand_alt,
 offhand, offhand_alt, aquatic, aquatic_alt, now, last_cast_by_agent.
+attack_target and enemies_nearby follow the gw2cc Settings > Combat > Target
+Filter (attitude, players / NPCs / gadgets, fight distance).
 
 Write to context.cast_target to override the target chosen by the condition
 groups above (1 = Enemy, 2 = Player, 3 = Friend)."""
@@ -56,6 +64,7 @@ var _current: Resource = null
 ## so cost a full agent sweep per refresh, and any error inside it aborted the
 ## rest of the refresh, which is what used to leave the condition list empty.
 var _context: RefCounted = null
+var _last_live_refresh: int = 0
 
 var _strip: HBoxContainer = null
 var _details: GridContainer = null
@@ -73,8 +82,6 @@ var _loading: bool = false
 
 
 func _ready() -> void:
-	title = "Skill Editor"
-	Style.apply(self)
 	size = WINDOW_SIZE
 	wrap_controls = false
 	Style.fit_to_contents(self, WINDOW_SIZE)
@@ -100,24 +107,19 @@ func refresh_units() -> void:
 
 func set_context(context: RefCounted) -> void:
 	_context = context
-	if visible and _current:
-		_refresh_details()
+	if not visible or not _current:
+		return
+	var now: int = Time.get_ticks_msec()
+	if now - _last_live_refresh < LIVE_REFRESH_MS:
+		return
+	_last_live_refresh = now
+	_refresh_live()
 
 
 # --- construction -------------------------------------------------------------
 
 func _build() -> void:
-	var margin := MarginContainer.new()
-	margin.set_anchors_preset(Control.PRESET_FULL_RECT)
-	margin.add_theme_constant_override("margin_left", 6)
-	margin.add_theme_constant_override("margin_right", 6)
-	margin.add_theme_constant_override("margin_top", 6)
-	margin.add_theme_constant_override("margin_bottom", 6)
-	add_child(margin)
-
-	var root := VBoxContainer.new()
-	root.add_theme_constant_override("separation", 4)
-	margin.add_child(root)
+	var root: VBoxContainer = Style.chrome(self, "Skill Editor")
 
 	_build_combo_strip(root)
 	_build_details(root)
@@ -325,15 +327,40 @@ func _refresh_strip() -> void:
 		_strip.add_child(add)
 
 
+## The whole grid: the static facts about the skill plus the editable fields,
+## then the live readings. Runs when the skill being edited changes.
 func _refresh_details() -> void:
 	if not _current:
 		return
 	var skill: AbilityDef = _current.ability()
-	var palette: RefCounted = _current.palette()
 
 	_set_detail("Name:", _current.display_name())
 	_set_detail("ID:", str(_current.id))
 	_set_detail("Set:", _current.skillpaletteuid)
+	_set_detail("MinRange:", Units.format_world(0.0))
+	_set_detail("MaxRange:", Units.format_world(skill.range if skill else 0.0))
+	_set_detail("Radius:", Units.format_world(skill.radius if skill else 0.0))
+	_set_detail("Req.Power:", str(skill.cost) if skill else "0")
+	_set_detail("GroundTargeted:", str(SkillState.is_ground_targeted(skill)))
+
+	_loading = true
+	_sets_attack_range.button_pressed = _current.setsattackrange
+	_requires_los.button_pressed = _current.requireslos
+	_cast_time.value = _current.activationtime
+	_instant_cast.button_pressed = _current.instantcast
+	_loading = false
+
+	_last_live_refresh = Time.get_ticks_msec()
+	_refresh_live()
+
+
+## Only the cells that change while the rotation runs. This is what every
+## runner tick pays for, so it touches nothing else.
+func _refresh_live() -> void:
+	if not _current:
+		return
+	var skill: AbilityDef = _current.ability()
+	var palette: RefCounted = _current.palette()
 
 	# CanCast is the routine's own verdict, so it only means something once the
 	# routine has actually run.
@@ -348,26 +375,17 @@ func _refresh_details() -> void:
 	else:
 		_set_detail("IsActiveSet:", "-")
 		_set_detail("CanActivateSet:", "-")
-	_set_detail("MinRange:", Units.format_world(0.0))
-	_set_detail("MaxRange:", Units.format_world(skill.range if skill else 0.0))
-	_set_detail("Radius:", Units.format_world(skill.radius if skill else 0.0))
-	_set_detail("Req.Power:", str(skill.cost) if skill else "0")
 	_set_detail("Cooldown:", "%d/%d" % [SkillState.cooldown_ms(skill), SkillState.cooldown_max_ms(skill)])
 	_set_detail("AmmoCooldown:", "%d/%d" % [SkillState.charge_cooldown_ms(skill), SkillState.charge_cooldown_max_ms(skill)])
-	_set_detail("GroundTargeted:", str(SkillState.is_ground_targeted(skill)))
 	_set_detail("Ammo:", "%d/%d" % [SkillState.charges(skill), SkillState.charges_max(skill)])
 
-	_loading = true
-	_sets_attack_range.button_pressed = _current.setsattackrange
-	_requires_los.button_pressed = _current.requireslos
-	_cast_time.value = _current.activationtime
-	_instant_cast.button_pressed = _current.instantcast
-	_loading = false
 
-
+## Writes a cell only when its text actually differs: a Label re-shapes its text
+## and invalidates the layout on every assignment, even an identical one.
 func _set_detail(key: String, value: String) -> void:
-	if _detail_values.has(key):
-		_detail_values[key].text = value
+	var label: Label = _detail_values.get(key)
+	if label and label.text != value:
+		label.text = value
 
 
 func _refresh_groups() -> void:
@@ -545,6 +563,11 @@ func _on_instant_cast(pressed: bool) -> void:
 func _on_code_changed() -> void:
 	if _loading or not _current:
 		return
+	# TextEdit emits text_changed (deferred) for a programmatic `text =` too, by
+	# which time _loading has been cleared. Loading a skill must neither mark the
+	# profile dirty nor throw away its compiled snippet.
+	if _code_editor.text == _current.condition_code:
+		return
 	_current.condition_code = _code_editor.text
 	_current.invalidate_script()
 	changed.emit()
@@ -569,6 +592,9 @@ func _prompt_for_condition(group: Resource) -> void:
 	picker.title = "Add Condition"
 	picker.ok_button_text = "Add"
 	picker.min_size = PICKER_SIZE
+	# The theme sits on this window's panel, not on the window, so a child
+	# dialog does not inherit it.
+	picker.theme = Style.current_theme()
 	add_child(picker)
 
 	# The dialog stretches its single child, so the combo goes inside a column

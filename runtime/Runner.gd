@@ -9,7 +9,6 @@ extends CombatManager.CombatRoutine
 ## Both paths run the same code.
 
 const Context := preload("res://plugins/skill_manager/runtime/Context.gd")
-const Profile := preload("res://plugins/skill_manager/resources/Profile.gd")
 const Skill := preload("res://plugins/skill_manager/resources/Skill.gd")
 const SkillState := preload("res://plugins/skill_manager/runtime/SkillState.gd")
 const PaletteRegistry := preload("res://plugins/skill_manager/runtime/palettes/PaletteRegistry.gd")
@@ -52,7 +51,6 @@ var _pending_deactivate_at: int = 0
 var _combo_follow_up: Resource = null
 var _combo_deadline: int = 0
 
-var _active_max_range: float = Profile.MIN_FIGHT_RANGE
 var _paused: bool = false
 
 static var _logger := ScopedLogger.create("SkillManager")
@@ -88,9 +86,17 @@ func is_available(state: CharacterState) -> bool:
 	return state.profession.id == profile.profession
 
 
+## Activation means "this is the selected routine", not "ready to cast".
+## CombatManager restores the saved routine as soon as it is registered and
+## again when the combat settings load -- both before the plugin has read a
+## profile, which only happens once the character has spawned. Refusing here
+## left the routine permanently off, since nothing retried. The loop already
+## idles while [member profile] is null, so accepting is safe.
 func activate() -> bool:
 	_reset()
-	return profile != null
+	if not profile:
+		_logger.trace("Activated with no profile loaded yet; idling until one is selected")
+	return true
 
 
 func deactivate() -> void:
@@ -127,7 +133,6 @@ func tick() -> void:
 
 	context = Context.build(profile.actionlist, context)
 	_refresh_actions()
-	_apply_fight_range()
 	evaluated.emit(context)
 
 	if not _palette_swap_settled(now):
@@ -135,37 +140,20 @@ func tick() -> void:
 	_cast_pass(now)
 
 
-## Refreshes every action's verdict and collects the dynamic attack range.
+## Refreshes every action's verdict.
+##
+## The fight distance and the attitude of what counts as an enemy are not
+## decided here: they come from the gw2cc Settings > Combat > Target Filter
+## (Manager.combat.default_target_filter), which CombatManager already applies
+## when it picks the attack target and which Context applies when it collects
+## the nearby enemies. GW2Minion let each profile publish its own range; this
+## routine deliberately never writes to the shared filter, so what the user set
+## in the menu stays in force.
 func _refresh_actions() -> void:
-	_active_max_range = Profile.MIN_FIGHT_RANGE
 	for action: Resource in profile.actionlist:
 		if not action:
 			continue
 		action.update(context)
-		_accumulate_range(action)
-
-
-func _accumulate_range(action: Resource) -> void:
-	for link: Resource in action.chain():
-		if not link.setsattackrange or not link.cancast:
-			continue
-		var palette: RefCounted = link.palette()
-		if not palette or not palette.is_active(context):
-			continue
-		var skill: AbilityDef = link.ability()
-		if not skill:
-			continue
-		var range_in_game_units: float = skill.range * Context.GAME_UNITS_PER_WORLD_UNIT
-		if range_in_game_units > _active_max_range:
-			_active_max_range = range_in_game_units
-
-
-## Publishes the fight range so the target filter and the approach logic use it.
-func _apply_fight_range() -> void:
-	var distance := _active_max_range
-	if profile.fightrangetype == Profile.RANGE_CUSTOM:
-		distance = maxf(profile.fixedfightrange, Profile.MIN_FIGHT_RANGE)
-	Manager.combat.default_target_filter.max_distance = distance
 
 
 ## Holds the loop while a palette swap is in flight, giving up after

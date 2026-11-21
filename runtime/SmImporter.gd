@@ -65,9 +65,9 @@ static func build(data: Dictionary, file_base: String, resolve_palette: Callable
 		resolve_palette = _registry_resolver
 
 	var profile: Resource = Profile.create(file_base, int(data.get("profession", 0)))
-	profile.fightrangetype = int(data.get("fightrangetype", Profile.RANGE_DYNAMIC))
-	profile.fixedfightrange = maxf(
-		float(data.get("fixedfightrange", Profile.MIN_FIGHT_RANGE)), Profile.MIN_FIGHT_RANGE)
+	# `fightrangetype` / `fixedfightrange` are deliberately not carried over: the
+	# fight distance is a gw2cc setting (Settings > Combat > Target Filter), not
+	# a per-profile one.
 
 	var menu_code := str(data.get("botmainmenu_luacode", ""))
 	if not menu_code.strip_edges().is_empty():

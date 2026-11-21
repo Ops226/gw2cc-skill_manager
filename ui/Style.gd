@@ -41,7 +41,6 @@ const PANEL_BG := Color(0.117647, 0.117647, 0.117647, 0.380000)
 ## The house Button style is a light parchment with near-black text. On the dark
 ## surface used here the text has to go the other way.
 const TEXT := Color(0.870, 0.880, 0.900)
-const TEXT_DISABLED := Color(0.718, 0.741, 0.788, 0.45)
 
 # --- skill tile states --------------------------------------------------------
 
@@ -110,10 +109,137 @@ const ICON_LARGE := 26
 
 const CORNER_RADIUS := 4
 
-## Focus ring for the code editors, the one place a lit border is wanted.
-const PANEL_ACCENT_BORDER := Color(ACCENT.r, ACCENT.g, ACCENT.b, 0.45)
+# --- window chrome ------------------------------------------------------------
+#
+# The shell every SkillManager window sits in, the same one the Valkyrie
+# Luminary plugin uses: a borderless, transparent Window holding one panel on
+# the gw2cc dark / light theme, a draggable title bar with a theme toggle and a
+# close button, a separator, then the content.
 
-static var _theme: Theme = null
+const DARK_THEME: Theme = preload("res://assets/themes/gw2cc_dark_theme.tres")
+const LIGHT_THEME: Theme = preload("res://assets/themes/gw2cc_light_theme.tres")
+const TitleBar := preload("res://assets/themes/DraggableTitleBar.gd")
+const ResizeGrip := preload("res://plugins/skill_manager/ui/widgets/ResizeGrip.gd")
+
+## Shared with GW2CCThemeManager, so one toggle moves every window that uses it.
+const THEME_SECTION := "GW2CC_Theme"
+const THEME_KEY := "dark_mode"
+
+const TITLE_BAR_HEIGHT := 20
+const TITLE_BUTTON_SIZE := 20
+const CONTENT_MARGIN := 6
+const CHROME_SEPARATION := 4
+const RESIZE_GRIP_SIZE := 16
+
+
+static var _themed_panels: Array = []
+static var _title_bars: Array = []
+
+
+static func is_dark_mode() -> bool:
+	return ConfigService.get_value(THEME_SECTION, THEME_KEY, true)
+
+
+## The theme in force right now. For the stock dialogs -- FileDialog,
+## ConfirmationDialog -- that build their own contents and cannot take the
+## shell: give them this so they match the windows they open from.
+static func current_theme() -> Theme:
+	return DARK_THEME if is_dark_mode() else LIGHT_THEME
+
+
+static func set_dark_mode(dark: bool) -> void:
+	ConfigService.set_value(THEME_SECTION, THEME_KEY, dark)
+	ConfigService.save_cfg()
+	_repaint(dark)
+
+
+static func _repaint(dark: bool) -> void:
+	var theme: Theme = DARK_THEME if dark else LIGHT_THEME
+	_themed_panels = _themed_panels.filter(func(node: Variant) -> bool: return is_instance_valid(node))
+	_title_bars = _title_bars.filter(func(node: Variant) -> bool: return is_instance_valid(node))
+	for panel: PanelContainer in _themed_panels:
+		panel.theme = theme
+	for bar: Variant in _title_bars:
+		bar.set_theme_icon(dark)
+
+
+## Dresses [param window] in the shared shell and returns the column the
+## caller builds its content into. The title bar's close button raises the
+## window's own close_requested, so whatever the window already does on close
+## keeps happening.
+static func chrome(window: Window, title: String) -> VBoxContainer:
+	window.title = title
+	window.borderless = true
+	window.transparent_bg = true
+
+	var panel := PanelContainer.new()
+	panel.set_anchors_preset(Control.PRESET_FULL_RECT)
+	panel.theme = current_theme()
+	window.add_child(panel)
+
+	var column := VBoxContainer.new()
+	column.add_theme_constant_override("separation", CHROME_SEPARATION)
+	panel.add_child(column)
+
+	var bar := HBoxContainer.new()
+	bar.name = "TitleBar"
+	bar.custom_minimum_size.y = TITLE_BAR_HEIGHT
+	bar.add_theme_constant_override("separation", CHROME_SEPARATION)
+
+	var label := Label.new()
+	label.name = "TitleLabel"
+	label.text = title
+	label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	bar.add_child(label)
+
+	var toggle := Button.new()
+	toggle.name = "ThemeToggle"
+	toggle.text = "🌙" if is_dark_mode() else "☀️"
+	toggle.custom_minimum_size = Vector2(TITLE_BUTTON_SIZE, TITLE_BUTTON_SIZE)
+	toggle.tooltip_text = "Toggle Dark/Light Theme"
+	bar.add_child(toggle)
+
+	var close := Button.new()
+	close.name = "CloseButton"
+	close.text = "✕"
+	close.custom_minimum_size = Vector2(TITLE_BUTTON_SIZE, TITLE_BUTTON_SIZE)
+	close.tooltip_text = "Close"
+	bar.add_child(close)
+
+	# DraggableTitleBar looks its children up in _ready, so the script goes on
+	# before the bar enters the tree.
+	bar.set_script(TitleBar)
+	bar.set("title_text", title)
+	column.add_child(bar)
+	bar.connect("theme_toggle_requested", func() -> void: set_dark_mode(not is_dark_mode()))
+	bar.connect("close_requested", func() -> void: window.close_requested.emit())
+
+	column.add_child(HSeparator.new())
+
+	var margin := MarginContainer.new()
+	margin.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	for side in ["margin_left", "margin_right", "margin_top", "margin_bottom"]:
+		margin.add_theme_constant_override(side, CONTENT_MARGIN)
+	column.add_child(margin)
+
+	var content := VBoxContainer.new()
+	content.add_theme_constant_override("separation", CHROME_SEPARATION)
+	margin.add_child(content)
+
+	# The grip is a child of the window, not of the panel, so the container
+	# does not stretch it; it anchors itself to the corner.
+	var grip: Control = ResizeGrip.new()
+	grip.window = window
+	grip.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_RIGHT)
+	grip.offset_left = -RESIZE_GRIP_SIZE
+	grip.offset_top = -RESIZE_GRIP_SIZE
+	window.add_child(grip)
+
+	_themed_panels.append(panel)
+	_title_bars.append(bar)
+	return content
+
 
 # --- helpers ------------------------------------------------------------------
 
@@ -155,10 +281,11 @@ static func state_tint(button: Button, state: State) -> void:
 			tint(button, IDLE_TINT, IDLE_TINT_HOVER, IDLE_TINT_ACTIVE)
 
 
-## Removes a tint previously applied by [method tint].
+## Returns a button to the plain surface look. Icon buttons must not fall back
+## to the theme's Button style: its 8 px content margins leave a 20 px button
+## with 4 px for the icon.
 static func untint(button: Button) -> void:
-	for slot in ["normal", "hover", "pressed", "focus"]:
-		button.remove_theme_stylebox_override(slot)
+	tint(button, SURFACE_BG, SURFACE_HOVER, SURFACE_PRESSED)
 
 
 ## A bordered child region, the equivalent of ImGui BeginChild(..., border = true).
@@ -166,49 +293,6 @@ static func bordered_panel() -> StyleBoxFlat:
 	var box := surface(PANEL_BG)
 	box.set_content_margin_all(6)
 	return box
-
-
-## The plugin theme: the house theme with the light parchment buttons swapped for
-## the same inset surface LineEdit already uses, and the text flipped to suit.
-## Applied to each window root so every child inherits it.
-static func build_theme() -> Theme:
-	if _theme:
-		return _theme
-
-	_theme = Theme.new()
-	for type_name in ["Button", "OptionButton", "MenuButton"]:
-		_theme.set_stylebox("normal", type_name, surface(SURFACE_BG))
-		_theme.set_stylebox("hover", type_name, surface(SURFACE_HOVER))
-		_theme.set_stylebox("pressed", type_name, surface(SURFACE_PRESSED))
-		_theme.set_stylebox("hover_pressed", type_name, surface(SURFACE_PRESSED))
-		_theme.set_stylebox("disabled", type_name, surface(SURFACE_DISABLED))
-		_theme.set_stylebox("focus", type_name, StyleBoxEmpty.new())
-		_theme.set_color("font_color", type_name, TEXT)
-		_theme.set_color("font_focus_color", type_name, TEXT)
-		_theme.set_color("font_hover_color", type_name, ACCENT)
-		_theme.set_color("font_pressed_color", type_name, ACCENT)
-		_theme.set_color("font_hover_pressed_color", type_name, ACCENT)
-		_theme.set_color("font_disabled_color", type_name, TEXT_DISABLED)
-
-	# A check box is its own tick mark. Giving it a filled surface turns the row
-	# into a wide empty bar, so it only gets the text colour.
-	for slot in ["normal", "hover", "pressed", "hover_pressed", "disabled", "focus"]:
-		_theme.set_stylebox(slot, "CheckBox", StyleBoxEmpty.new())
-	_theme.set_color("font_color", "CheckBox", TEXT)
-	_theme.set_color("font_hover_color", "CheckBox", ACCENT)
-	_theme.set_color("font_pressed_color", "CheckBox", ACCENT)
-
-	_theme.set_stylebox("panel", "PanelContainer", surface(PANEL_BG))
-	_theme.set_color("font_color", "Label", TEXT)
-
-	for type_name in ["TextEdit", "CodeEdit"]:
-		_theme.set_stylebox("normal", type_name, surface(SURFACE_BG))
-		_theme.set_stylebox("focus", type_name, surface(SURFACE_BG, PANEL_ACCENT_BORDER))
-		_theme.set_stylebox("read_only", type_name, surface(SURFACE_DISABLED))
-		_theme.set_color("font_color", type_name, TEXT)
-		_theme.set_color("font_readonly_color", type_name, TEXT_DISABLED)
-
-	return _theme
 
 
 ## How many rows a dropdown shows before it starts scrolling. The condition list
@@ -225,11 +309,6 @@ static func bound_popup(combo: OptionButton, max_visible: int = POPUP_MAX_VISIBL
 	var popup := combo.get_popup()
 	# A zero axis means unconstrained, so only the height is pinned.
 	popup.max_size = Vector2i(0, max_visible * POPUP_ROW_HEIGHT)
-
-
-## Gives a window the plugin theme. Controls inherit it from their window root.
-static func apply(window: Window) -> void:
-	window.theme = build_theme()
 
 
 ## Stops a window being sized below what its contents need.
@@ -269,7 +348,7 @@ static func icon_button(texture: Texture2D, size: int, tip: String = "") -> Butt
 	button.expand_icon = true
 	button.icon_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	button.tooltip_text = tip
-	button.add_theme_stylebox_override("focus", StyleBoxEmpty.new())
+	untint(button)
 	return button
 
 

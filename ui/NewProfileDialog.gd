@@ -20,8 +20,6 @@ var _ok: Button = null
 
 
 func _ready() -> void:
-	title = "Create new SkillManager Profile"
-	Style.apply(self)
 	Style.fit_to_contents(self, DIALOG_SIZE)
 	size = DIALOG_SIZE
 	transient = true
@@ -32,21 +30,8 @@ func _ready() -> void:
 
 
 func _build() -> void:
-	var margin := MarginContainer.new()
-	margin.set_anchors_preset(Control.PRESET_FULL_RECT)
-	margin.add_theme_constant_override("margin_left", 12)
-	margin.add_theme_constant_override("margin_right", 12)
-	margin.add_theme_constant_override("margin_top", 12)
-	margin.add_theme_constant_override("margin_bottom", 12)
-	add_child(margin)
-
-	var root := VBoxContainer.new()
+	var root: VBoxContainer = Style.chrome(self, "Create new SkillManager Profile")
 	root.add_theme_constant_override("separation", 6)
-	margin.add_child(root)
-
-	var heading := Label.new()
-	heading.text = "Create new SkillManager Profile:"
-	root.add_child(heading)
 
 	var path_label := Label.new()
 	path_label.text = "File Path:"

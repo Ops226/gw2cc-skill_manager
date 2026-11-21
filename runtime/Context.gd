@@ -22,6 +22,11 @@ const ORDER_EF := 2
 ## TargetFilter.max_distance and AgentUtils.SPEED_FORWARD both encode.
 const GAME_UNITS_PER_WORLD_UNIT := 32.0
 
+## What [member mainhand] and friends hold when that hand is empty. A real
+## weapon type is never negative; ItemConstants.WeaponType starts at 0 with
+## Sword, so 0 cannot double as "nothing".
+const NO_WEAPON := -1
+
 ## Swim states, matching GW2.SWIMSTATE.
 const SWIM_NONE := 0
 const SWIM_DIVING := 1
@@ -366,23 +371,19 @@ static func _collect_weapon_types(context: RefCounted, player: AgentChar) -> voi
 		return
 	_weapon_types_at = now
 
-	var primary: CharacterState = CharacterState.from_agent(player)
-	primary.update_weapon_set(player, ItemStorage.WEAPON_SET_LAND_1)
-	context.mainhand = primary.mainhand_weapon_type
-	context.offhand = primary.offhand_weapon_type
+	var primary: CharacterState = _state_for_set(player, ItemStorage.WEAPON_SET_LAND_1)
+	context.mainhand = _hand_type(primary.mainhand_palette, primary.mainhand_weapon_type)
+	context.offhand = _hand_type(primary.offhand_palette, primary.offhand_weapon_type)
 
-	var alternate: CharacterState = CharacterState.from_agent(player)
-	alternate.update_weapon_set(player, ItemStorage.WEAPON_SET_LAND_2)
-	context.mainhand_alt = alternate.mainhand_weapon_type
-	context.offhand_alt = alternate.offhand_weapon_type
+	var alternate: CharacterState = _state_for_set(player, ItemStorage.WEAPON_SET_LAND_2)
+	context.mainhand_alt = _hand_type(alternate.mainhand_palette, alternate.mainhand_weapon_type)
+	context.offhand_alt = _hand_type(alternate.offhand_palette, alternate.offhand_weapon_type)
 
-	var water: CharacterState = CharacterState.from_agent(player)
-	water.update_weapon_set(player, ItemStorage.WEAPON_SET_AQUATIC_1)
-	context.aquatic = water.mainhand_weapon_type
+	var water: CharacterState = _state_for_set(player, ItemStorage.WEAPON_SET_AQUATIC_1)
+	context.aquatic = _hand_type(water.mainhand_palette, water.mainhand_weapon_type)
 
-	var water_alt: CharacterState = CharacterState.from_agent(player)
-	water_alt.update_weapon_set(player, ItemStorage.WEAPON_SET_AQUATIC_2)
-	context.aquatic_alt = water_alt.mainhand_weapon_type
+	var water_alt: CharacterState = _state_for_set(player, ItemStorage.WEAPON_SET_AQUATIC_2)
+	context.aquatic_alt = _hand_type(water_alt.mainhand_palette, water_alt.mainhand_weapon_type)
 
 	_weapon_types = [
 		context.mainhand, context.offhand,
@@ -391,19 +392,51 @@ static func _collect_weapon_types(context: RefCounted, player: AgentChar) -> voi
 	]
 
 
-## One sweep over the agent list, split by attitude. The Lua did the same and
-## explicitly noted it was to avoid hitting the engine six times per condition.
+## A snapshot holding exactly the weapons of one set. update_weapon_set only
+## overwrites the hands that set fills, so without the reset an empty set would
+## report the active set's weapons.
+static func _state_for_set(player: AgentChar, weapon_set: int) -> CharacterState:
+	var state: CharacterState = CharacterState.from_agent(player)
+	state.mainhand_palette = null
+	state.offhand_palette = null
+	state.update_weapon_set(player, weapon_set)
+	return state
+
+
+static func _hand_type(palette: SkillPaletteDef, weapon_type: int) -> int:
+	return weapon_type if palette else NO_WEAPON
+
+
+## One sweep over the agent list, split into friends and enemies. The Lua did
+## the same and explicitly noted it was to avoid hitting the engine six times
+## per condition.
+##
+## What counts as an enemy is the user's call, made in gw2cc Settings > Combat >
+## Target Filter: the attitude flags (Friendly / Hostile / Neutral / Critter),
+## the players / NPCs / gadgets toggles and the fight distance all apply, so the
+## `Entities In Range` condition counts exactly the agents the bot would fight.
+## Friends are anyone friendly and alive; healing is not governed by the attack
+## filter.
 static func _collect_nearby(context: RefCounted, player: AgentChar) -> void:
+	var filter: TargetFilter = enemy_filter()
 	for agent: Agent in Manager.agent.agents.values():
 		if not agent or agent == player or not agent.is_spawned:
 			continue
 		if not is_alive(agent):
 			continue
-		match agent.attitude:
-			Agent.ATTITUDE_FRIENDLY:
-				context.friends_nearby.append(agent)
-			Agent.ATTITUDE_HOSTILE, Agent.ATTITUDE_NEUTRAL:
-				context.enemies_nearby.append(agent)
+		if agent.attitude == Agent.ATTITUDE_FRIENDLY:
+			context.friends_nearby.append(agent)
+			continue
+		if filter and filter.is_valid_target(agent):
+			context.enemies_nearby.append(agent)
+
+
+## The gw2cc target filter that decides who is an enemy, or null when the combat
+## manager is not around (editor previews, headless probes).
+static func enemy_filter() -> TargetFilter:
+	if not Manager.combat:
+		return null
+	return Manager.combat.default_target_filter
 
 
 ## Lowest-health friendly in range, party and squad first, matching
